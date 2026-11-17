@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Methanol–Water VLE Analysis Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono for crisp numerical readouts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom range slider styling for precision scientific controls */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 999px;
+            background: #e2e8f0;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #0f172a;
+            border: 2px solid #ffffff;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+            margin-top: -6px;
+            transition: transform 0.12s ease, background-color 0.12s ease;
+        }
+        input[type="range"]:hover::-webkit-slider-thumb {
+            transform: scale(1.12);
+        }
+        input[type="range"].slider-z::-webkit-slider-thumb { background: #059669; }
+        input[type="range"].slider-t::-webkit-slider-thumb { background: #dc2626; }
+        input[type="range"].slider-p::-webkit-slider-thumb { background: #2563eb; }
+
+        /* Subtle bubble float animation inside the flash vessel graphic */
+        @keyframes rise {
+            0% { transform: translateY(0) scale(0.9); opacity: 0; }
+            25% { opacity: 0.75; }
+            85% { opacity: 0.6; }
+            100% { transform: translateY(-48px) scale(1.15); opacity: 0; }
+        }
+        .vapor-bubble {
+            animation: rise 2.4s infinite ease-in;
+        }
+        .vapor-bubble:nth-child(2) { animation-delay: 0.7s; }
+        .vapor-bubble:nth-child(3) { animation-delay: 1.4s; }
+        .vapor-bubble:nth-child(4) { animation-delay: 1.9s; }
+
+        /* Keep scientific subscripts and superscripts crisp without shifting line height */
+        sub, sup {
+            font-size: 75%;
+            line-height: 0;
+            position: relative;
+            vertical-align: baseline;
+        }
+        sup { top: -0.45em; }
+        sub { bottom: -0.22em; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
+
+    <!-- Top Navigation & Model Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-emerald-600 to-orange-500 flex items-center justify-center text-white shadow-sm shrink-0">
+                    <!-- Flask / Phase Equilibrium Icon -->
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 3h6m-5 0v5.172a2 2 0 01-.586 1.414l-4.828 4.828A2 2 0 004 15.828V18a3 3 0 003 3h10a3 3 0 003-3v-2.172a2 2 0 00-.586-1.414l-4.828-4.828A2 2 0 0114 8.172V3" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 16h14" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Methanol–Water VLE Studio</h1>
+                        <span class="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">Binary Phase Equilibrium</span>
+                    </div>
+                    <p class="text-xs text-slate-500">Interactive <i>T</i>-<i>x</i>-<i>y</i> &amp; <i>P</i>-<i>x</i>-<i>y</i> Diagrams, Tie-Line Analysis &amp; Lever Rule Calculator</p>
+                </div>
+            </div>
+
+            <!-- Presets & Thermodynamic Model Switch -->
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                    <button id="btn-model-wilson" onclick="setThermoModel('wilson')" class="px-2.5 py-1 rounded-lg font-semibold transition bg-white text-slate-900 shadow-xs">
+                        Non-Ideal (Wilson)
+                    </button>
+                    <button id="btn-model-ideal" onclick="setThermoModel('ideal')" class="px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900">
+                        Ideal (Raoult)
+                    </button>
+                </div>
+
+                <div class="h-5 w-px bg-slate-200 hidden sm:block"></div>
+
+                <!-- Quick Operating Presets -->
+                <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span class="text-slate-400 font-medium hidden xl:inline">Presets:</span>
+                    <button onclick="applyPreset(0.40, 78.0, 101.3)" class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-medium transition">
+                        1 atm VLE
+                    </button>
+                    <button onclick="applyPreset(0.55, 62.0, 101.3)" class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-medium transition">
+                        Subcooled Liq
+                    </button>
+                    <button onclick="applyPreset(0.30, 96.0, 101.3)" class="px-2.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-200 font-medium transition">
+                        Superheated Vap
+                    </button>
+                    <button onclick="applyPreset(0.45, 56.0, 45.0)" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium transition">
+                        Vacuum (45 kPa)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+
+        <!-- Interactive Control Deck -->
+        <section aria-label="State Variables Control Panel" class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- Control 1: Overall Methanol Mole Fraction (z1) -->
+                <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="input-z" class="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>
+                            Overall Methanol (<i>z</i><sub>MeOH</sub>)
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input id="input-z" type="number" min="0" max="1" step="0.01" value="0.40"
+                                class="w-20 text-right font-mono text-sm font-bold text-emerald-700 bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            <span class="text-xs font-mono text-slate-400">mol/mol</span>
+                        </div>
+                    </div>
+                    <input id="slider-z" type="range" min="0" max="1" step="0.005" value="0.40" class="w-full slider-z">
+                    <div class="flex justify-between text-[11px] font-mono text-slate-400 mt-1">
+                        <span>0.00 (Pure H₂O)</span>
+                        <span>0.50</span>
+                        <span>1.00 (Pure MeOH)</span>
+                    </div>
+                </div>
+
+                <!-- Control 2: System Temperature (T) -->
+                <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="input-t" class="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>
+                            Temperature (<i>T</i>)
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input id="input-t" type="number" min="35" max="135" step="0.5" value="78.0"
+                                class="w-20 text-right font-mono text-sm font-bold text-red-700 bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-red-500">
+                            <span class="text-xs font-mono text-slate-400">°C</span>
+                        </div>
+                    </div>
+                    <input id="slider-t" type="range" min="35" max="135" step="0.2" value="78.0" class="w-full slider-t">
+                    <div class="flex justify-between text-[11px] font-mono text-slate-400 mt-1">
+                        <span>35.0 °C</span>
+                        <span id="readout-tk" class="text-slate-500">351.15 K</span>
+                        <span>135.0 °C</span>
+                    </div>
+                </div>
+
+                <!-- Control 3: System Pressure (P) -->
+                <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80">
+                    <div class="flex items-center justify-between mb-2">
+                        <label for="input-p" class="text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span>
+                            Pressure (<i>P</i>)
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input id="input-p" type="number" min="20" max="250" step="0.5" value="101.3"
+                                class="w-20 text-right font-mono text-sm font-bold text-blue-700 bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <span class="text-xs font-mono text-slate-400">kPa</span>
+                        </div>
+                    </div>
+                    <input id="slider-p" type="range" min="20" max="250" step="0.5" value="101.3" class="w-full slider-p">
+                    <div class="flex justify-between text-[11px] font-mono text-slate-400 mt-1">
+                        <span>20 kPa</span>
+                        <button onclick="setPressure1Atm()" class="text-blue-600 hover:underline font-sans font-medium">1 atm (101.3 kPa)</button>
+                        <span>250 kPa</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dual Equilibrium Diagrams Grid (T-x-y and P-x-y) -->
+        <section aria-label="Equilibrium Phase Diagrams" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- Card 1: T-x-y Diagram -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col">
+                <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i>T</i>-<i>x</i>-<i>y</i> Phase Diagram
+                            <span id="badge-txy-p" class="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">P = 101.3 kPa</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Isobaric Boiling &amp; Condensation Envelope • Click or drag plot to set (<i>z</i><sub>MeOH</sub>, <i>T</i>)</p>
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex items-center gap-3 text-[11px] font-medium">
+                        <span class="flex items-center gap-1 text-blue-700"><span class="w-3 h-0.5 bg-blue-600 inline-block"></span>Bubble (<i>x</i>)</span>
+                        <span class="flex items-center gap-1 text-orange-600"><span class="w-3 h-0.5 bg-orange-500 inline-block"></span>Dew (<i>y</i>)</span>
+                        <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>State</span>
+                    </div>
+                </div>
+                <div class="relative w-full h-[320px] sm:h-[360px] rounded-xl bg-slate-50/50 border border-slate-200/80 overflow-hidden">
+                    <canvas id="canvas-txy" class="block w-full h-full cursor-crosshair touch-none"></canvas>
+                </div>
+            </div>
+
+            <!-- Card 2: P-x-y Diagram -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col">
+                <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i>P</i>-<i>x</i>-<i>y</i> Phase Diagram
+                            <span id="badge-pxy-t" class="text-xs font-mono font-semibold px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200">T = 78.0 °C</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Isothermal Vapor Pressure Envelope • Click or drag plot to set (<i>z</i><sub>MeOH</sub>, <i>P</i>)</p>
+                    </div>
+                    <!-- Legend -->
+                    <div class="flex items-center gap-3 text-[11px] font-medium">
+                        <span class="flex items-center gap-1 text-blue-700"><span class="w-3 h-0.5 bg-blue-600 inline-block"></span>Bubble (<i>x</i>)</span>
+                        <span class="flex items-center gap-1 text-orange-600"><span class="w-3 h-0.5 bg-orange-500 inline-block"></span>Dew (<i>y</i>)</span>
+                        <span class="flex items-center gap-1 text-emerald-700"><span class="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></span>State</span>
+                    </div>
+                </div>
+                <div class="relative w-full h-[320px] sm:h-[360px] rounded-xl bg-slate-50/50 border border-slate-200/80 overflow-hidden">
+                    <canvas id="canvas-pxy" class="block w-full h-full cursor-crosshair touch-none"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Phase Split, Lever Rule & Thermodynamic State Readout -->
+        <section aria-label="Phase Split and Lever Rule Analysis" class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+            <!-- Left 5 Cols: Visual Flash Drum & Phase Proportions -->
+            <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h3 class="text-base font-bold text-slate-900">Phase Split &amp; Flash Drum</h3>
+                        <span id="phase-status-badge" class="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Two-Phase VLE
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-12 gap-4 items-center my-2">
+                        <!-- Visual Flash Vessel SVG -->
+                        <div class="col-span-5 flex flex-col items-center justify-center">
+                            <div class="relative w-28 h-48 rounded-3xl border-2 border-slate-400 bg-slate-100 overflow-hidden shadow-inner flex flex-col justify-end">
+                                <!-- Vapor Headspace Region (Top) -->
+                                <div id="vessel-vapor-zone" class="w-full bg-gradient-to-b from-orange-100/90 to-orange-200/75 transition-all duration-300 flex flex-col items-center justify-center relative overflow-hidden" style="height: 45%;">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-orange-800/80 z-10">Vapor</span>
+                                    <span id="vessel-v-pct" class="font-mono text-xs font-bold text-orange-900 z-10">45.0%</span>
+                                </div>
+                                <!-- Meniscus Line -->
+                                <div id="vessel-meniscus" class="w-full h-0.5 bg-blue-500/70 shrink-0"></div>
+                                <!-- Liquid Pool Region (Bottom) -->
+                                <div id="vessel-liquid-zone" class="w-full bg-gradient-to-b from-blue-500 to-blue-600 transition-all duration-300 flex flex-col items-center justify-center relative overflow-hidden text-white" style="height: 55%;">
+                                    <!-- Subtle rising bubbles in VLE -->
+                                    <div id="vessel-bubbles" class="absolute inset-0 pointer-events-none">
+                                        <span class="vapor-bubble absolute bottom-2 left-5 w-2 h-2 rounded-full bg-white/40"></span>
+                                        <span class="vapor-bubble absolute bottom-3 left-12 w-2.5 h-2.5 rounded-full bg-white/35"></span>
+                                        <span class="vapor-bubble absolute bottom-1 right-6 w-1.5 h-1.5 rounded-full bg-white/45"></span>
+                                        <span class="vapor-bubble absolute bottom-4 right-11 w-2 h-2 rounded-full bg-white/30"></span>
+                                    </div>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-blue-100 z-10">Liquid</span>
+                                    <span id="vessel-l-pct" class="font-mono text-xs font-bold text-white z-10">55.0%</span>
+                                </div>
+                            </div>
+                            <span class="text-[11px] text-slate-400 mt-1.5 font-medium">Molar Phase Ratio</span>
+                        </div>
+
+                        <!-- Liquid & Vapor Breakdown Cards -->
+                        <div class="col-span-7 space-y-3">
+                            <!-- Vapor Card -->
+                            <div class="rounded-xl p-3 bg-orange-50/70 border border-orange-200/80">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-orange-900 uppercase tracking-wide">Vapor Phase (<i>V</i>/<i>F</i>)</span>
+                                    <span id="card-v-frac" class="font-mono text-base font-bold text-orange-700">0.450</span>
+                                </div>
+                                <div class="mt-1.5 pt-1.5 border-t border-orange-200/60 flex justify-between text-xs">
+                                    <span class="text-orange-800">Methanol (<i>y</i><sub>MeOH</sub>):</span>
+                                    <span id="card-y1" class="font-mono font-bold text-orange-950">0.682</span>
+                                </div>
+                                <div class="flex justify-between text-xs mt-0.5">
+                                    <span class="text-orange-800/80">Water (<i>y</i><sub>H₂O</sub>):</span>
+                                    <span id="card-y2" class="font-mono font-medium text-orange-900">0.318</span>
+                                </div>
+                            </div>
+
+                            <!-- Liquid Card -->
+                            <div class="rounded-xl p-3 bg-blue-50/70 border border-blue-200/80">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-blue-900 uppercase tracking-wide">Liquid Phase (<i>L</i>/<i>F</i>)</span>
+                                    <span id="card-l-frac" class="font-mono text-base font-bold text-blue-700">0.550</span>
+                                </div>
+                                <div class="mt-1.5 pt-1.5 border-t border-blue-200/60 flex justify-between text-xs">
+                                    <span class="text-blue-800">Methanol (<i>x</i><sub>MeOH</sub>):</span>
+                                    <span id="card-x1" class="font-mono font-bold text-blue-950">0.295</span>
+                                </div>
+                                <div class="flex justify-between text-xs mt-0.5">
+                                    <span class="text-blue-800/80">Water (<i>x</i><sub>H₂O</sub>):</span>
+                                    <span id="card-x2" class="font-mono font-medium text-blue-900">0.705</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Note -->
+                <p id="phase-explanation" class="text-xs text-slate-600 bg-slate-50 rounded-xl p-2.5 border border-slate-200/80 mt-2 leading-relaxed">
+                    Mixture is inside the two-phase envelope. Methanol preferentially partitions into the vapor phase (<i>y</i><sub>MeOH</sub> &gt; <i>x</i><sub>MeOH</sub>).
+                </p>
+            </div>
+
+            <!-- Right 7 Cols: Interactive Lever Rule Visualizer & Saturation Boundaries -->
+            <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-4">
+                <div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-900">Lever Rule &amp; Tie-Line Balance</h3>
+                            <p class="text-xs text-slate-500">Inverse arm principle along the horizontal equilibrium tie-line at constant <i>T</i> and <i>P</i></p>
+                        </div>
+                        <div class="font-mono text-xs bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700">
+                            <i>L</i>(<i>z</i><sub>1</sub> &minus; <i>x</i><sub>1</sub>) = <i>V</i>(<i>y</i><sub>1</sub> &minus; <i>z</i><sub>1</sub>)
+                        </div>
+                    </div>
+
+                    <!-- Visual Lever Beam Diagram -->
+                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/90 mt-3">
+                        <!-- Top Arm Labels -->
+                        <div id="lever-vle-visual">
+                            <div class="flex justify-between text-[11px] font-semibold mb-1.5">
+                                <span class="text-orange-700">Arm &Delta;<sub><i>V</i></sub> = <i>z</i><sub>1</sub> &minus; <i>x</i><sub>1</sub> (Proportional to <i>V</i>)</span>
+                                <span class="text-blue-700">Arm &Delta;<sub><i>L</i></sub> = <i>y</i><sub>1</sub> &minus; <i>z</i><sub>1</sub> (Proportional to <i>L</i>)</span>
+                            </div>
+
+                            <!-- Dual-Segment Tie-Line Bar -->
+                            <div class="relative h-8 w-full rounded-lg overflow-hidden flex border border-slate-300 bg-white shadow-inner">
+                                <div id="lever-arm-left" class="h-full bg-orange-400/85 flex items-center justify-center text-white font-mono text-xs font-bold transition-all duration-200 overflow-hidden whitespace-nowrap px-1" style="width: 45%;">
+                                    <span id="lever-arm-left-txt">0.105</span>
+                                </div>
+                                <div id="lever-arm-right" class="h-full bg-blue-500/85 flex items-center justify-center text-white font-mono text-xs font-bold transition-all duration-200 overflow-hidden whitespace-nowrap px-1" style="width: 55%;">
+                                    <span id="lever-arm-right-txt">0.282</span>
+                                </div>
+                            </div>
+
+                            <!-- Fulcrum & Endpoint Markers -->
+                            <div class="grid grid-cols-3 gap-2 mt-2.5 text-xs">
+                                <div class="bg-white rounded-lg p-2 border border-blue-200 text-left">
+                                    <div class="text-[10px] font-bold uppercase text-blue-600">Liquid Endpoint (<i>x</i><sub>1</sub>)</div>
+                                    <div id="lever-x1-val" class="font-mono font-bold text-slate-900 text-sm">0.2950</div>
+                                </div>
+                                <div class="bg-emerald-50/80 rounded-lg p-2 border border-emerald-300 text-center">
+                                    <div class="text-[10px] font-bold uppercase text-emerald-700">▲ Fulcrum (<i>z</i><sub>1</sub>)</div>
+                                    <div id="lever-z1-val" class="font-mono font-bold text-emerald-900 text-sm">0.4000</div>
+                                </div>
+                                <div class="bg-white rounded-lg p-2 border border-orange-200 text-right">
+                                    <div class="text-[10px] font-bold uppercase text-orange-600">Vapor Endpoint (<i>y</i><sub>1</sub>)</div>
+                                    <div id="lever-y1-val" class="font-mono font-bold text-slate-900 text-sm">0.6820</div>
+                                </div>
+                            </div>
+
+                            <!-- Live Algebraic Formula Substitution -->
+                            <div class="mt-3 pt-2.5 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                                <div class="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700">
+                                    <span class="text-orange-700 font-bold">V/F</span> = (z₁ − x₁)/(y₁ − x₁) = <span id="formula-v" class="font-bold text-slate-900">0.450</span>
+                                </div>
+                                <div class="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700">
+                                    <span class="text-blue-700 font-bold">L/F</span> = (y₁ − z₁)/(y₁ − x₁) = <span id="formula-l" class="font-bold text-slate-900">0.550</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Single-Phase Banner (shown when outside VLE envelope) -->
+                        <div id="lever-single-phase-msg" class="hidden py-6 text-center">
+                            <div id="single-phase-title" class="text-sm font-bold text-slate-800">Single-Phase Regime (No Tie-Line Split)</div>
+                            <p id="single-phase-desc" class="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                                Adjust Temperature or Pressure into the two-phase envelope between the Bubble and Dew limits below to observe phase splitting.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Saturation Limits & Thermodynamic Properties Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Bubble Temp (<i>T</i><sub>bub</sub>)</div>
+                        <div id="prop-tbub" class="font-mono text-sm font-bold text-blue-700 mt-0.5">75.3 °C</div>
+                        <div class="text-[10px] text-slate-400">at <i>P</i>, <i>z</i><sub>1</sub></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dew Temp (<i>T</i><sub>dew</sub>)</div>
+                        <div id="prop-tdew" class="font-mono text-sm font-bold text-orange-600 mt-0.5">86.4 °C</div>
+                        <div class="text-[10px] text-slate-400">at <i>P</i>, <i>z</i><sub>1</sub></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Bubble Press (<i>P</i><sub>bub</sub>)</div>
+                        <div id="prop-pbub" class="font-mono text-sm font-bold text-blue-700 mt-0.5">112.4 kPa</div>
+                        <div class="text-[10px] text-slate-400">at <i>T</i>, <i>z</i><sub>1</sub></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dew Press (<i>P</i><sub>dew</sub>)</div>
+                        <div id="prop-pdew" class="font-mono text-sm font-bold text-orange-600 mt-0.5">76.8 kPa</div>
+                        <div class="text-[10px] text-slate-400">at <i>T</i>, <i>z</i><sub>1</sub></div>
+                    </div>
+                </div>
+
+                <!-- Extra Activity & Volatility Bar -->
+                <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70 font-mono">
+                    <span><i>P</i><sub>MeOH</sub><sup>sat</sup>: <strong id="prop-psat1" class="text-slate-800">168.2 kPa</strong></span>
+                    <span><i>P</i><sub>H₂O</sub><sup>sat</sup>: <strong id="prop-psat2" class="text-slate-800">43.7 kPa</strong></span>
+                    <span>&gamma;<sub>MeOH</sub>: <strong id="prop-gamma1" class="text-slate-800">1.31</strong></span>
+                    <span>&gamma;<sub>H₂O</sub>: <strong id="prop-gamma2" class="text-slate-800">1.12</strong></span>
+                    <span>Rel. Vol &alpha;<sub>12</sub>: <strong id="prop-alpha" class="text-emerald-700">4.51</strong></span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /**
+         * ============================================================================
+         * 1. THERMODYNAMIC ENGINE: METHANOL (1) - WATER (2)
+         *    - Antoine Equation for pure species saturation pressures
+         *    - Wilson Activity Coefficient Model (or Ideal Raoult's Law)
+         *    - Bubble Point, Dew Point, and Isothermal/Isobaric Flash Solvers
+         * ============================================================================
+         */
+        const ThermoEngine = (() => {
+            // Antoine Constants: ln(P_sat [kPa]) = A - B / (T [°C] + C)
+            // Verified against NIST / Smith, Van Ness & Abbott:
+            // Methanol normal boiling point: 64.7 °C -> 101.3 kPa
+            // Water normal boiling point: 100.0 °C -> 101.3 kPa
+            const ANTOINE = {
+                meoh: { A: 16.5785, B: 3638.27, C: 239.500 },
+                water: { A: 16.3872, B: 3885.70, C: 230.170 }
+            };
+
+            // Wilson Parameters for Methanol (1) - Water (2) (DECHEMA / Smith, Van Ness, Abbott)
+            // V1, V2 in cm^3/mol; a12, a21 in cal/mol; R = 1.9872 cal/(mol·K)
+            const WILSON = {
+                V1: 40.73,
+                V2: 18.07,
+                a12: 107.38,
+                a21: 469.55,
+                R: 1.9872
+            };
+
+            /**
+             * Pure component saturation vapor pressure in kPa at temperature T (°C)
+             */
+            function pSatMeOH(T_C) {
+                return Math.exp(ANTOINE.meoh.A - ANTOINE.meoh.B / (T_C + ANTOINE.meoh.C));
+            }
+
+            function pSatWater(T_C) {
+                return Math.exp(ANTOINE.water.A - ANTOINE.water.B / (T_C + ANTOINE.water.C));
+            }
+
+            /**
+             * Pure component saturation temperature (°C) at pressure P (kPa)
+             */
+            function tSatMeOH(P_kPa) {
+                return ANTOINE.meoh.B / (ANTOINE.meoh.A - Math.log(P_kPa)) - ANTOINE.meoh.C;
+            }
+
+            function tSatWater(P_kPa) {
+                return ANTOINE.water.B / (ANTOINE.water.A - Math.log(P_kPa)) - ANTOINE.water.C;
+            }
+
+            /**
+             * Liquid-phase activity coefficients (gamma1, gamma2) using Wilson equation
+             */
+            function activityCoefficients(x1, T_C, model = 'wilson') {
+                if (model === 'ideal') {
+                    return { gamma1: 1.0, gamma2: 1.0 };
+                }
+                const x = Math.max(0, Math.min(1, x1));
+                const x2 = 1.0 - x;
+                const T_K = T_C + 273.15;
+
+                const L12 = (WILSON.V2 / WILSON.V1) * Math.exp(-WILSON.a12 / (WILSON.R * T_K));
+                const L21 = (WILSON.V1 / WILSON.V2) * Math.exp(-WILSON.a21 / (WILSON.R * T_K));
+
+                const denom1 = x + L12 * x2;
+                const denom2 = L21 * x + x2;
+
+                const term = (L12 / denom1) - (L21 / denom2);
+                const lnGamma1 = -Math.log(denom1) + x2 * term;
+                const lnGamma2 = -Math.log(denom2) - x * term;
+
+                return {
+                    gamma1: Math.exp(lnGamma1),
+                    gamma2: Math.exp(lnGamma2)
+                };
+            }
+
+            /**
+             * Bubble pressure P_bub (kPa) and equilibrium vapor composition y1 at (x1, T_C)
+             */
+            function bubblePressure(x1, T_C, model = 'wilson') {
+                const x = Math.max(0, Math.min(1, x1));
+                const x2 = 1.0 - x;
+                const P1 = pSatMeOH(T_C);
+                const P2 = pSatWater(T_C);
+                const { gamma1, gamma2 } = activityCoefficients(x, T_C, model);
+
+                const p1Partial = x * gamma1 * P1;
+                const p2Partial = x2 * gamma2 * P2;
+                const P_bub = p1Partial + p2Partial;
+                const y1 = P_bub > 0 ? p1Partial / P_bub : x;
+
+                return { P: P_bub, y1, gamma1, gamma2, P1, P2 };
+            }
+
+            /**
+             * Bubble temperature T_bub (°C) and equilibrium vapor composition y1 at (x1, P_kPa)
+             * Solved via bisection (monotonically increasing vapor pressure with T)
+             */
+            function bubbleTemperature(x1, P_kPa, model = 'wilson') {
+                const x = Math.max(0, Math.min(1, x1));
+                if (x <= 1e-9) {
+                    const T = tSatWater(P_kPa);
+                    const { gamma1, gamma2 } = activityCoefficients(0, T, model);
+                    return { T, y1: 0, gamma1, gamma2 };
+                }
+                if (x >= 1 - 1e-9) {
+                    const T = tSatMeOH(P_kPa);
+                    const { gamma1, gamma2 } = activityCoefficients(1, T, model);
+                    return { T, y1: 1, gamma1, gamma2 };
+                }
+
+                let low = -30.0;
+                let high = 220.0;
+                for (let i = 0; i < 45; i++) {
+                    const mid = 0.5 * (low + high);
+                    const { P } = bubblePressure(x, mid, model);
+                    if (P < P_kPa) {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                }
+                const T_bub = 0.5 * (low + high);
+                const res = bubblePressure(x, T_bub, model);
+                return { T: T_bub, y1: res.y1, gamma1: res.gamma1, gamma2: res.gamma2 };
+            }
+
+            /**
+             * Dew pressure P_dew (kPa) at overall vapor composition y1_target and temperature T_C.
+             * Finds liquid x1 such that y1(x1, T_C) = y1_target, then returns P_bub(x1, T_C).
+             */
+            function dewPressure(y1_target, T_C, model = 'wilson') {
+                const yTarget = Math.max(0, Math.min(1, y1_target));
+                if (yTarget <= 1e-9) return { P: pSatWater(T_C), x1: 0 };
+                if (yTarget >= 1 - 1e-9) return { P: pSatMeOH(T_C), x1: 1 };
+
+                let low = 0.0;
+                let high = 1.0;
+                for (let i = 0; i < 45; i++) {
+                    const mid = 0.5 * (low + high);
+                    const { y1 } = bubblePressure(mid, T_C, model);
+                    if (y1 < yTarget) {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                }
+                const x1_eq = 0.5 * (low + high);
+                const { P } = bubblePressure(x1_eq, T_C, model);
+                return { P, x1: x1_eq };
+            }
+
+            /**
+             * Dew temperature T_dew (°C) at vapor composition y1_target and pressure P_kPa.
+             * Finds liquid x1 whose equilibrium vapor at P_kPa equals y1_target.
+             */
+            function dewTemperature(y1_target, P_kPa, model = 'wilson') {
+                const yTarget = Math.max(0, Math.min(1, y1_target));
+                if (yTarget <= 1e-9) return { T: tSatWater(P_kPa), x1: 0 };
+                if (yTarget >= 1 - 1e-9) return { T: tSatMeOH(P_kPa), x1: 1 };
+
+                let low = 0.0;
+                let high = 1.0;
+                for (let i = 0; i < 45; i++) {
+                    const mid = 0.5 * (low + high);
+                    const { y1 } = bubbleTemperature(mid, P_kPa, model);
+                    if (y1 < yTarget) {
+                        low = mid;
+                    } else {
+                        high = mid;
+                    }
+                }
+                const x1_eq = 0.5 * (low + high);
+                const { T } = bubbleTemperature(x1_eq, P_kPa, model);
+                return { T, x1: x1_eq };
+            }
+
+            /**
+             * Generate full T-x-y envelope arrays at constant pressure P_kPa
+             */
+            function generateTxyCurve(P_kPa, model = 'wilson', steps = 100) {
+                const points = [];
+                for (let i = 0; i <= steps; i++) {
+                    const x1 = i / steps;
+                    const { T, y1 } = bubbleTemperature(x1, P_kPa, model);
+                    points.push({ x1, y1, T });
+                }
+                return points;
+            }
+
+            /**
+             * Generate full P-x-y envelope arrays at constant temperature T_C
+             */
+            function generatePxyCurve(T_C, model = 'wilson', steps = 100) {
+                const points = [];
+                for (let i = 0; i <= steps; i++) {
+                    const x1 = i / steps;
+                    const { P, y1 } = bubblePressure(x1, T_C, model);
+                    points.push({ x1, y1, P });
+                }
+                return points;
+            }
+
+            /**
+             * Complete Flash & Lever Rule Evaluation at (z1, T_C, P_kPa)
+             */
+            function evaluateFlash(z1, T_C, P_kPa, model = 'wilson') {
+                const z = Math.max(0, Math.min(1, z1));
+                const P1 = pSatMeOH(T_C);
+                const P2 = pSatWater(T_C);
+
+                // Saturation boundaries at (z, P) and (z, T)
+                const bubTRes = bubbleTemperature(z, P_kPa, model);
+                const dewTRes = dewTemperature(z, P_kPa, model);
+                const bubPRes = bubblePressure(z, T_C, model);
+                const dewPRes = dewPressure(z, T_C, model);
+
+                const T_bub = bubTRes.T;
+                const T_dew = dewTRes.T;
+                const P_bub = bubPRes.P;
+                const P_dew = dewPRes.P;
+
+                let phase = 'VLE'; // 'LIQUID', 'VLE', or 'VAPOR'
+                let x1 = z;
+                let y1 = z;
+                let vaporFrac = 0;
+                let liquidFrac = 1;
+                let gamma1 = bubPRes.gamma1;
+                let gamma2 = bubPRes.gamma2;
+
+                // Pure component handling (z == 0 or z == 1)
+                if (z <= 1e-6 || z >= 1 - 1e-6) {
+                    const T_sat = z <= 1e-6 ? tSatWater(P_kPa) : tSatMeOH(P_kPa);
+                    if (T_C < T_sat - 0.05) {
+                        phase = 'LIQUID';
+                        vaporFrac = 0;
+                        liquidFrac = 1;
+                    } else if (T_C > T_sat + 0.05) {
+                        phase = 'VAPOR';
+                        vaporFrac = 1;
+                        liquidFrac = 0;
+                    } else {
+                        phase = 'VLE';
+                        vaporFrac = 0.5;
+                        liquidFrac = 0.5;
+                    }
+                    x1 = z;
+                    y1 = z;
+                } else {
+                    // Binary mixture: check against P_bub(z, T) and P_dew(z, T)
+                    if (P_kPa >= P_bub) {
+                        // Subcooled Liquid
+                        phase = 'LIQUID';
+                        x1 = z;
+                        y1 = bubPRes.y1; // Incipient bubble composition
+                        vaporFrac = 0.0;
+                        liquidFrac = 1.0;
+                        gamma1 = bubPRes.gamma1;
+                        gamma2 = bubPRes.gamma2;
+                    } else if (P_kPa <= P_dew) {
+                        // Superheated Vapor
+                        phase = 'VAPOR';
+                        x1 = dewPRes.x1; // Incipient dew composition
+                        y1 = z;
+                        vaporFrac = 1.0;
+                        liquidFrac = 0.0;
+                        const act = activityCoefficients(x1, T_C, model);
+                        gamma1 = act.gamma1;
+                        gamma2 = act.gamma2;
+                    } else {
+                        // Two-Phase Vapor-Liquid Equilibrium!
+                        // By Gibbs Phase Rule (F = 2 - 2 + 2 = 2), fixing T and P uniquely fixes x1 and y1.
+                        // Solve P_bub(x1, T_C) = P_kPa for x1 in [0, 1].
+                        phase = 'VLE';
+                        let low = 0.0;
+                        let high = 1.0;
+                        for (let i = 0; i < 50; i++) {
+                            const mid = 0.5 * (low + high);
+                            const res = bubblePressure(mid, T_C, model);
+                            if (res.P < P_kPa) {
+                                low = mid;
+                            } else {
+                                high = mid;
+                            }
+                        }
+                        x1 = 0.5 * (low + high);
+                        const eqRes = bubblePressure(x1, T_C, model);
+                        y1 = eqRes.y1;
+                        gamma1 = eqRes.gamma1;
+                        gamma2 = eqRes.gamma2;
+
+                        // Lever Rule
+                        const span = y1 - x1;
+                        if (span > 1e-7) {
+                            vaporFrac = Math.max(0, Math.min(1, (z - x1) / span));
+                            liquidFrac = 1.0 - vaporFrac;
+                        } else {
+                            vaporFrac = 0.5;
+                            liquidFrac = 0.5;
+                        }
+                    }
+                }
+
+                // Relative volatility alpha_12 = (gamma1 * P1_sat) / (gamma2 * P2_sat)
+                const alpha12 = (gamma1 * P1) / (gamma2 * P2);
+
+                return {
+                    z1: z,
+                    T: T_C,
+                    P: P_kPa,
+                    phase,
+                    x1,
+                    x2: 1 - x1,
+                    y1,
+                    y2: 1 - y1,
+                    vaporFrac,
+                    liquidFrac,
+                    T_bub,
+                    T_dew,
+                    P_bub,
+                    P_dew,
+                    P1_sat: P1,
+                    P2_sat: P2,
+                    gamma1,
+                    gamma2,
+                    alpha12
+                };
+            }
+
+            return {
+                evaluateFlash,
+                generateTxyCurve,
+                generatePxyCurve,
+                bubbleTemperature,
+                dewTemperature,
+                bubblePressure,
+                dewPressure
+            };
+        })();
+
+        /**
+         * ============================================================================
+         * 2. APPLICATION STATE
+         * ============================================================================
+         */
+        const AppState = {
+            z1: 0.40,
+            T: 78.0,
+            P: 101.3,
+            model: 'wilson', // 'wilson' | 'ideal'
+            hoverTxy: null,  // { xNorm, yVal, px, py }
+            hoverPxy: null,  // { xNorm, yVal, px, py }
+            activeDrag: null // 'txy' | 'pxy' | null
+        };
+
+        /**
+         * ============================================================================
+         * 3. HIGH-DPI INTERACTIVE CANVAS RENDERER (T-x-y & P-x-y DIAGRAMS)
+         * ============================================================================
+         */
+        const ChartRenderer = (() => {
+            const PADDING = { top: 24, right: 24, bottom: 44, left: 56 };
+
+            /**
+             * Generate clean, human-friendly axis tick intervals
+             */
+            function computeTicks(minVal, maxVal, desiredCount = 6) {
+                const span = maxVal - minVal;
+                if (span <= 0) return [minVal];
+                const rawStep = span / desiredCount;
+                const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+                const norm = rawStep / mag;
+                let step;
+                if (norm < 1.5) step = 1 * mag;
+                else if (norm < 3) step = 2 * mag;
+                else if (norm < 7) step = 5 * mag;
+                else step = 10 * mag;
+
+                const first = Math.ceil(minVal / step) * step;
+                const ticks = [];
+                for (let v = first; v <= maxVal + 1e-6; v += step) {
+                    ticks.push(Number(v.toFixed(4)));
+                }
+                return ticks;
+            }
+
+            /**
+             * Prepare Canvas dimensions with devicePixelRatio for sharp Retina text & lines
+             */
+            function setupCanvas(canvas) {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
+                    canvas.width = Math.round(rect.width * dpr);
+                    canvas.height = Math.round(rect.height * dpr);
+                }
+                const ctx = canvas.getContext('2d');
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                return { ctx, width: rect.width, height: rect.height };
+            }
+
+            /**
+             * Shared plotting routine for T-x-y and P-x-y diagrams
+             */
+            function drawPhaseDiagram(canvas, config) {
+                const { ctx, width, height } = setupCanvas(canvas);
+                const {
+                    curvePoints, // Array of { x1, y1, val }
+                    yMin,
+                    yMax,
+                    yLabel,
+                    yUnit,
+                    stateY,      // Current T or P
+                    flash,       // Result of evaluateFlash
+                    hoverInfo,   // { px, py } or null
+                    isTxy        // true for T-x-y, false for P-x-y
+                } = config;
+
+                ctx.clearRect(0, 0, width, height);
+
+                const plotW = Math.max(40, width - PADDING.left - PADDING.right);
+                const plotH = Math.max(40, height - PADDING.top - PADDING.bottom);
+
+                const mapX = (xVal) => PADDING.left + xVal * plotW;
+                const mapY = (yVal) => PADDING.top + plotH - ((yVal - yMin) / (yMax - yMin)) * plotH;
+                const unmapX = (px) => Math.max(0, Math.min(1, (px - PADDING.left) / plotW));
+                const unmapY = (py) => yMin + ((PADDING.top + plotH - py) / plotH) * (yMax - yMin);
+
+                // Store coordinate helpers on canvas element for mouse/touch interaction
+                canvas._plotGeometry = { PADDING, plotW, plotH, unmapX, unmapY };
+
+                // 1. Plot Background & Gridlines
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(PADDING.left, PADDING.top, plotW, plotH);
+
+                // Horizontal Gridlines
+                const yTicks = computeTicks(yMin, yMax, 6);
+                ctx.lineWidth = 1;
+                ctx.font = '500 11px "JetBrains Mono", monospace';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+
+                yTicks.forEach(tick => {
+                    const py = mapY(tick);
+                    if (py >= PADDING.top - 1 && py <= PADDING.top + plotH + 1) {
+                        ctx.strokeStyle = '#f1f5f9';
+                        ctx.beginPath();
+                        ctx.moveTo(PADDING.left, py);
+                        ctx.lineTo(PADDING.left + plotW, py);
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#64748b';
+                        ctx.fillText(tick.toFixed(isTxy ? 0 : 0), PADDING.left - 8, py);
+                    }
+                });
+
+                // Vertical Gridlines (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+                const xTicks = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                xTicks.forEach(tick => {
+                    const px = mapX(tick);
+                    ctx.strokeStyle = '#f1f5f9';
+                    ctx.beginPath();
+                    ctx.moveTo(px, PADDING.top);
+                    ctx.lineTo(px, PADDING.top + plotH);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#64748b';
+                    ctx.fillText(tick.toFixed(1), px, PADDING.top + plotH + 7);
+                });
+
+                // 2. Shaded Two-Phase Lens Envelope
+                ctx.save();
+                ctx.beginPath();
+                // Bubble curve forward (x1: 0 -> 1)
+                curvePoints.forEach((pt, idx) => {
+                    const px = mapX(pt.x1);
+                    const py = mapY(pt.val);
+                    if (idx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                });
+                // Dew curve backward (y1: 1 -> 0)
+                for (let i = curvePoints.length - 1; i >= 0; i--) {
+                    const pt = curvePoints[i];
+                    ctx.lineTo(mapX(pt.y1), mapY(pt.val));
+                }
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+                ctx.fill();
+                ctx.restore();
+
+                // Region Labels (Liquid vs Vapor)
+                ctx.font = '600 11px "Inter", sans-serif';
+                ctx.fillStyle = 'rgba(37, 99, 235, 0.55)';
+                ctx.textAlign = 'left';
+                ctx.fillText('SUBCOOLED LIQUID', PADDING.left + 10, isTxy ? PADDING.top + plotH - 18 : PADDING.top + 14);
+
+                ctx.fillStyle = 'rgba(234, 88, 12, 0.65)';
+                ctx.textAlign = 'right';
+                ctx.fillText('SUPERHEATED VAPOR', PADDING.left + plotW - 10, isTxy ? PADDING.top + 14 : PADDING.top + plotH - 18);
+
+                // 3. Bubble Point Curve (Blue)
+                ctx.save();
+                ctx.strokeStyle = '#2563eb';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                curvePoints.forEach((pt, idx) => {
+                    const px = mapX(pt.x1);
+                    const py = mapY(pt.val);
+                    if (idx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                });
+                ctx.stroke();
+                ctx.restore();
+
+                // 4. Dew Point Curve (Orange)
+                ctx.save();
+                ctx.strokeStyle = '#f97316';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                curvePoints.forEach((pt, idx) => {
+                    const px = mapX(pt.y1);
+                    const py = mapY(pt.val);
+                    if (idx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                });
+                ctx.stroke();
+                ctx.restore();
+
+                // 5. Tie-Line & Drop Projections when inside Two-Phase VLE
+                const statePx = mapX(flash.z1);
+                const statePy = mapY(stateY);
+
+                // Vertical dashed line for overall composition z1
+                ctx.save();
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(5, 150, 105, 0.45)';
+                ctx.lineWidth = 1.25;
+                ctx.beginPath();
+                ctx.moveTo(statePx, PADDING.top + plotH);
+                ctx.lineTo(statePx, statePy);
+                ctx.stroke();
+                ctx.restore();
+
+                if (flash.phase === 'VLE' && flash.y1 - flash.x1 > 1e-4) {
+                    const x1Px = mapX(flash.x1);
+                    const y1Px = mapX(flash.y1);
+
+                    // Left Lever Segment (x1 to z1) - Proportional to Vapor (Orange)
+                    ctx.save();
+                    ctx.strokeStyle = '#f97316';
+                    ctx.lineWidth = 3.5;
+                    ctx.beginPath();
+                    ctx.moveTo(x1Px, statePy);
+                    ctx.lineTo(statePx, statePy);
+                    ctx.stroke();
+
+                    // Right Lever Segment (z1 to y1) - Proportional to Liquid (Blue)
+                    ctx.strokeStyle = '#2563eb';
+                    ctx.lineWidth = 3.5;
+                    ctx.beginPath();
+                    ctx.moveTo(statePx, statePy);
+                    ctx.lineTo(y1Px, statePy);
+                    ctx.stroke();
+
+                    // Vertical drop-lines from x1 and y1 to bottom axis
+                    ctx.setLineDash([3, 3]);
+                    ctx.lineWidth = 1.2;
+                    ctx.strokeStyle = 'rgba(37, 99, 235, 0.65)';
+                    ctx.beginPath();
+                    ctx.moveTo(x1Px, statePy);
+                    ctx.lineTo(x1Px, PADDING.top + plotH);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = 'rgba(249, 115, 22, 0.75)';
+                    ctx.beginPath();
+                    ctx.moveTo(y1Px, statePy);
+                    ctx.lineTo(y1Px, PADDING.top + plotH);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Tie-line endpoint dots (x1 on bubble curve, y1 on dew curve)
+                    drawNode(ctx, x1Px, statePy, 4.5, '#2563eb', '#ffffff');
+                    drawNode(ctx, y1Px, statePy, 4.5, '#f97316', '#ffffff');
+
+                    // Compact x1 / y1 pill tags near bottom axis if space permits
+                    if (y1Px - x1Px > 34) {
+                        drawAxisTag(ctx, x1Px, PADDING.top + plotH - 12, `x=${flash.x1.toFixed(2)}`, '#1d4ed8', '#eff6ff');
+                        drawAxisTag(ctx, y1Px, PADDING.top + plotH - 12, `y=${flash.y1.toFixed(2)}`, '#c2410c', '#fff7ed');
+                    }
+                }
+
+                // 6. Overall State Point Marker (z1, T or P)
+                // Outer halo
+                ctx.beginPath();
+                ctx.arc(statePx, statePy, 10, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(5, 150, 105, 0.20)';
+                ctx.fill();
+                // Inner core
+                drawNode(ctx, statePx, statePy, 5.5, '#059669', '#ffffff');
+
+                // 7. Interactive Hover Crosshair & Floating Readout
+                if (hoverInfo && !AppState.activeDrag) {
+                    const { px, py } = hoverInfo;
+                    if (px >= PADDING.left && px <= PADDING.left + plotW && py >= PADDING.top && py <= PADDING.top + plotH) {
+                        const hx = unmapX(px);
+                        const hy = unmapY(py);
+
+                        ctx.save();
+                        ctx.setLineDash([2, 3]);
+                        ctx.strokeStyle = 'rgba(71, 85, 105, 0.5)';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(px, PADDING.top);
+                        ctx.lineTo(px, PADDING.top + plotH);
+                        ctx.moveTo(PADDING.left, py);
+                        ctx.lineTo(PADDING.left + plotW, py);
+                        ctx.stroke();
+                        ctx.restore();
+
+                        // Tooltip box
+                        const labelText = `z=${hx.toFixed(2)}, ${isTxy ? 'T=' + hy.toFixed(1) + '°C' : 'P=' + hy.toFixed(1) + 'kPa'}`;
+                        ctx.font = '600 11px "JetBrains Mono", monospace';
+                        const tw = ctx.measureText(labelText).width + 14;
+                        const th = 22;
+                        let bx = px + 10;
+                        let by = py - 28;
+                        if (bx + tw > PADDING.left + plotW) bx = px - tw - 10;
+                        if (by < PADDING.top) by = py + 10;
+
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+                        roundRect(ctx, bx, by, tw, th, 6);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(labelText, bx + 7, by + th / 2);
+                    }
+                }
+
+                // 8. Plot Border & Axis Titles
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 1.25;
+                ctx.strokeRect(PADDING.left, PADDING.top, plotW, plotH);
+
+                // X-Axis Title
+                ctx.fillStyle = '#334155';
+                ctx.font = '600 12px "Inter", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('Methanol Mole Fraction (x₁, y₁, z₁)', PADDING.left + plotW / 2, height - 4);
+
+                // Y-Axis Title (rotated)
+                ctx.save();
+                ctx.translate(15, PADDING.top + plotH / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(`${yLabel} (${yUnit})`, 0, 0);
+                ctx.restore();
+            }
+
+            function drawNode(ctx, x, y, r, fill, stroke) {
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = fill;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = stroke;
+                ctx.stroke();
+            }
+
+            function drawAxisTag(ctx, cx, cy, text, fg, bg) {
+                ctx.font = '600 10px "JetBrains Mono", monospace';
+                const w = ctx.measureText(text).width + 8;
+                const h = 16;
+                ctx.fillStyle = bg;
+                ctx.strokeStyle = fg;
+                ctx.lineWidth = 1;
+                roundRect(ctx, cx - w / 2, cy - h / 2, w, h, 4);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = fg;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, cx, cy);
+            }
+
+            function roundRect(ctx, x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            }
+
+            return { drawPhaseDiagram };
+        })();
+
+        /**
+         * ============================================================================
+         * 4. UI SYNCHRONIZATION & INTERACTION HANDLERS
+         * ============================================================================
+         */
+        const canvasTxy = document.getElementById('canvas-txy');
+        const canvasPxy = document.getElementById('canvas-pxy');
+
+        function renderAll() {
+            const { z1, T, P, model } = AppState;
+
+            // 1. Evaluate Flash & Thermodynamic State
+            const flash = ThermoEngine.evaluateFlash(z1, T, P, model);
+
+            // 2. Generate T-x-y Curve at current P & dynamic Y bounds
+            const txyRaw = ThermoEngine.generateTxyCurve(P, model, 90);
+            const txyPoints = txyRaw.map(pt => ({ x1: pt.x1, y1: pt.y1, val: pt.T }));
+            const tMinCurve = Math.min(...txyPoints.map(p => p.val));
+            const tMaxCurve = Math.max(...txyPoints.map(p => p.val));
+            const tYMin = Math.floor((Math.min(tMinCurve, T) - 5) / 5) * 5;
+            const tYMax = Math.ceil((Math.max(tMaxCurve, T) + 5) / 5) * 5;
+
+            ChartRenderer.drawPhaseDiagram(canvasTxy, {
+                curvePoints: txyPoints,
+                yMin: tYMin,
+                yMax: tYMax,
+                yLabel: 'Temperature',
+                yUnit: '°C',
+                stateY: T,
+                flash,
+                hoverInfo: AppState.hoverTxy,
+                isTxy: true
+            });
+
+            // 3. Generate P-x-y Curve at current T & dynamic Y bounds
+            const pxyRaw = ThermoEngine.generatePxyCurve(T, model, 90);
+            const pxyPoints = pxyRaw.map(pt => ({ x1: pt.x1, y1: pt.y1, val: pt.P }));
+            const pMinCurve = Math.min(...pxyPoints.map(p => p.val));
+            const pMaxCurve = Math.max(...pxyPoints.map(p => p.val));
+            const pYMin = Math.max(0, Math.floor((Math.min(pMinCurve, P) - 8) / 10) * 10);
+            const pYMax = Math.ceil((Math.max(pMaxCurve, P) + 10) / 10) * 10;
+
+            ChartRenderer.drawPhaseDiagram(canvasPxy, {
+                curvePoints: pxyPoints,
+                yMin: pYMin,
+                yMax: pYMax,
+                yLabel: 'Pressure',
+                yUnit: 'kPa',
+                stateY: P,
+                flash,
+                hoverInfo: AppState.hoverPxy,
+                isTxy: false
+            });
+
+            // 4. Update Control Inputs & Badges
+            document.getElementById('input-z').value = z1.toFixed(2);
+            document.getElementById('slider-z').value = z1;
+            document.getElementById('input-t').value = T.toFixed(1);
+            document.getElementById('slider-t').value = T;
+            document.getElementById('readout-tk').textContent = `${(T + 273.15).toFixed(2)} K`;
+            document.getElementById('input-p').value = P.toFixed(1);
+            document.getElementById('slider-p').value = P;
+
+            document.getElementById('badge-txy-p').textContent = `P = ${P.toFixed(1)} kPa`;
+            document.getElementById('badge-pxy-t').textContent = `T = ${T.toFixed(1)} °C`;
+
+            // 5. Update Flash Drum Graphic & Phase Cards
+            const vPct = (flash.vaporFrac * 100).toFixed(1);
+            const lPct = (flash.liquidFrac * 100).toFixed(1);
+
+            const vaporZone = document.getElementById('vessel-vapor-zone');
+            const liquidZone = document.getElementById('vessel-liquid-zone');
+            const bubbles = document.getElementById('vessel-bubbles');
+            const meniscus = document.getElementById('vessel-meniscus');
+
+            vaporZone.style.height = `${flash.vaporFrac * 100}%`;
+            liquidZone.style.height = `${flash.liquidFrac * 100}%`;
+            document.getElementById('vessel-v-pct').textContent = flash.vaporFrac > 0.08 ? `${vPct}%` : '';
+            document.getElementById('vessel-l-pct').textContent = flash.liquidFrac > 0.08 ? `${lPct}%` : '';
+
+            bubbles.style.display = flash.phase === 'VLE' ? 'block' : 'none';
+            meniscus.style.display = flash.phase === 'VLE' ? 'block' : 'none';
+
+            document.getElementById('card-v-frac').textContent = `${flash.vaporFrac.toFixed(3)} (${vPct}%)`;
+            document.getElementById('card-l-frac').textContent = `${flash.liquidFrac.toFixed(3)} (${lPct}%)`;
+
+            const badge = document.getElementById('phase-status-badge');
+            const explanation = document.getElementById('phase-explanation');
+            const leverVisual = document.getElementById('lever-vle-visual');
+            const singlePhaseMsg = document.getElementById('lever-single-phase-msg');
+
+            if (flash.phase === 'VLE') {
+                badge.textContent = 'Two-Phase VLE';
+                badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200';
+
+                document.getElementById('card-y1').textContent = flash.y1.toFixed(4);
+                document.getElementById('card-y2').textContent = flash.y2.toFixed(4);
+                document.getElementById('card-x1').textContent = flash.x1.toFixed(4);
+                document.getElementById('card-x2').textContent = flash.x2.toFixed(4);
+
+                const enrichment = (flash.y1 / Math.max(1e-6, flash.x1)).toFixed(2);
+                explanation.innerHTML = `Mixture is in <strong>Vapor–Liquid Equilibrium</strong>. Vapor is enriched in methanol by <strong>${enrichment}×</strong> (<i>y</i><sub>1</sub> = ${flash.y1.toFixed(3)} vs. <i>x</i><sub>1</sub> = ${flash.x1.toFixed(3)}).`;
+
+                // Show and update Lever Rule Beam
+                leverVisual.classList.remove('hidden');
+                singlePhaseMsg.classList.add('hidden');
+
+                const armV = Math.max(0, flash.z1 - flash.x1);
+                const armL = Math.max(0, flash.y1 - flash.z1);
+                const leftPct = (flash.vaporFrac * 100).toFixed(1);
+                const rightPct = (flash.liquidFrac * 100).toFixed(1);
+
+                document.getElementById('lever-arm-left').style.width = `${leftPct}%`;
+                document.getElementById('lever-arm-right').style.width = `${rightPct}%`;
+                document.getElementById('lever-arm-left-txt').textContent = flash.vaporFrac > 0.12 ? armV.toFixed(3) : '';
+                document.getElementById('lever-arm-right-txt').textContent = flash.liquidFrac > 0.12 ? armL.toFixed(3) : '';
+
+                document.getElementById('lever-x1-val').textContent = flash.x1.toFixed(4);
+                document.getElementById('lever-z1-val').textContent = flash.z1.toFixed(4);
+                document.getElementById('lever-y1-val').textContent = flash.y1.toFixed(4);
+                document.getElementById('formula-v').textContent = flash.vaporFrac.toFixed(3);
+                document.getElementById('formula-l').textContent = flash.liquidFrac.toFixed(3);
+
+            } else if (flash.phase === 'LIQUID') {
+                badge.textContent = 'Subcooled Liquid';
+                badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200';
+
+                document.getElementById('card-y1').textContent = `— (bub: ${flash.y1.toFixed(3)})`;
+                document.getElementById('card-y2').textContent = '—';
+                document.getElementById('card-x1').textContent = flash.z1.toFixed(4);
+                document.getElementById('card-x2').textContent = (1 - flash.z1).toFixed(4);
+
+                explanation.innerHTML = `System is <strong>100% Subcooled Liquid</strong> (<i>T</i> &lt; <i>T</i><sub>bub</sub> = ${flash.T_bub.toFixed(1)} °C and <i>P</i> &gt; <i>P</i><sub>bub</sub> = ${flash.P_bub.toFixed(1)} kPa). No vapor phase is present.`;
+
+                leverVisual.classList.add('hidden');
+                singlePhaseMsg.classList.remove('hidden');
+                document.getElementById('single-phase-title').textContent = 'Subcooled Liquid Regime (L/F = 1.000, V/F = 0.000)';
+                document.getElementById('single-phase-desc').textContent = `Increase temperature above ${flash.T_bub.toFixed(1)} °C or reduce pressure below ${flash.P_bub.toFixed(1)} kPa to initiate vaporization.`;
+
+            } else {
+                badge.textContent = 'Superheated Vapor';
+                badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200';
+
+                document.getElementById('card-y1').textContent = flash.z1.toFixed(4);
+                document.getElementById('card-y2').textContent = (1 - flash.z1).toFixed(4);
+                document.getElementById('card-x1').textContent = `— (dew: ${flash.x1.toFixed(3)})`;
+                document.getElementById('card-x2').textContent = '—';
+
+                explanation.innerHTML = `System is <strong>100% Superheated Vapor</strong> (<i>T</i> &gt; <i>T</i><sub>dew</sub> = ${flash.T_dew.toFixed(1)} °C and <i>P</i> &lt; <i>P</i><sub>dew</sub> = ${flash.P_dew.toFixed(1)} kPa). No liquid phase is present.`;
+
+                leverVisual.classList.add('hidden');
+                singlePhaseMsg.classList.remove('hidden');
+                document.getElementById('single-phase-title').textContent = 'Superheated Vapor Regime (V/F = 1.000, L/F = 0.000)';
+                document.getElementById('single-phase-desc').textContent = `Cool temperature below ${flash.T_dew.toFixed(1)} °C or compress pressure above ${flash.P_dew.toFixed(1)} kPa to initiate condensation.`;
+            }
+
+            // 6. Update Saturation Boundaries & Thermodynamic Coefficients
+            document.getElementById('prop-tbub').textContent = `${flash.T_bub.toFixed(1)} °C`;
+            document.getElementById('prop-tdew').textContent = `${flash.T_dew.toFixed(1)} °C`;
+            document.getElementById('prop-pbub').textContent = `${flash.P_bub.toFixed(1)} kPa`;
+            document.getElementById('prop-pdew').textContent = `${flash.P_dew.toFixed(1)} kPa`;
+
+            document.getElementById('prop-psat1').textContent = `${flash.P1_sat.toFixed(1)} kPa`;
+            document.getElementById('prop-psat2').textContent = `${flash.P2_sat.toFixed(1)} kPa`;
+            document.getElementById('prop-gamma1').textContent = flash.gamma1.toFixed(3);
+            document.getElementById('prop-gamma2').textContent = flash.gamma2.toFixed(3);
+            document.getElementById('prop-alpha').textContent = flash.alpha12.toFixed(2);
+        }
+
+        // Control Listeners
+        function bindControls() {
+            const sliderZ = document.getElementById('slider-z');
+            const inputZ = document.getElementById('input-z');
+            const sliderT = document.getElementById('slider-t');
+            const inputT = document.getElementById('input-t');
+            const sliderP = document.getElementById('slider-p');
+            const inputP = document.getElementById('input-p');
+
+            sliderZ.addEventListener('input', e => {
+                AppState.z1 = parseFloat(e.target.value);
+                renderAll();
+            });
+            inputZ.addEventListener('change', e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) AppState.z1 = Math.max(0, Math.min(1, v));
+                renderAll();
+            });
+
+            sliderT.addEventListener('input', e => {
+                AppState.T = parseFloat(e.target.value);
+                renderAll();
+            });
+            inputT.addEventListener('change', e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) AppState.T = Math.max(35, Math.min(135, v));
+                renderAll();
+            });
+
+            sliderP.addEventListener('input', e => {
+                AppState.P = parseFloat(e.target.value);
+                renderAll();
+            });
+            inputP.addEventListener('change', e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v)) AppState.P = Math.max(20, Math.min(250, v));
+                renderAll();
+            });
+        }
+
+        // Interactive Canvas Pointer Events (Mouse + Touch)
+        function attachCanvasInteraction(canvas, type) {
+            function getLocalCoords(evt) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+                const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+                return {
+                    px: clientX - rect.left,
+                    py: clientY - rect.top
+                };
+            }
+
+            function updateStateFromPointer(px, py) {
+                const geom = canvas._plotGeometry;
+                if (!geom) return;
+                const newZ = geom.unmapX(px);
+                const newY = geom.unmapY(py);
+                AppState.z1 = Math.round(newZ * 200) / 200; // Snap to 0.005
+                if (type === 'txy') {
+                    AppState.T = Math.max(35, Math.min(135, Math.round(newY * 5) / 5));
+                } else {
+                    AppState.P = Math.max(20, Math.min(250, Math.round(newY * 2) / 2));
+                }
+                renderAll();
+            }
+
+            canvas.addEventListener('mousedown', evt => {
+                const { px, py } = getLocalCoords(evt);
+                AppState.activeDrag = type;
+                updateStateFromPointer(px, py);
+            });
+
+            window.addEventListener('mousemove', evt => {
+                if (AppState.activeDrag === type) {
+                    const { px, py } = getLocalCoords(evt);
+                    updateStateFromPointer(px, py);
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (AppState.activeDrag === type) {
+                    AppState.activeDrag = null;
+                    renderAll();
+                }
+            });
+
+            canvas.addEventListener('mousemove', evt => {
+                const { px, py } = getLocalCoords(evt);
+                if (type === 'txy') AppState.hoverTxy = { px, py };
+                else AppState.hoverPxy = { px, py };
+                if (!AppState.activeDrag) renderAll();
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                if (type === 'txy') AppState.hoverTxy = null;
+                else AppState.hoverPxy = null;
+                renderAll();
+            });
+
+            // Touch Support
+            canvas.addEventListener('touchstart', evt => {
+                evt.preventDefault();
+                const { px, py } = getLocalCoords(evt);
+                AppState.activeDrag = type;
+                updateStateFromPointer(px, py);
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', evt => {
+                evt.preventDefault();
+                if (AppState.activeDrag === type) {
+                    const { px, py } = getLocalCoords(evt);
+                    updateStateFromPointer(px, py);
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', () => {
+                AppState.activeDrag = null;
+                renderAll();
+            });
+        }
+
+        // Preset & Model Switcher Helpers
+        function applyPreset(z, t, p) {
+            AppState.z1 = z;
+            AppState.T = t;
+            AppState.P = p;
+            renderAll();
+        }
+
+        function setPressure1Atm() {
+            AppState.P = 101.3;
+            renderAll();
+        }
+
+        function setThermoModel(model) {
+            AppState.model = model;
+            const btnWilson = document.getElementById('btn-model-wilson');
+            const btnIdeal = document.getElementById('btn-model-ideal');
+            if (model === 'wilson') {
+                btnWilson.className = 'px-2.5 py-1 rounded-lg font-semibold transition bg-white text-slate-900 shadow-xs';
+                btnIdeal.className = 'px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900';
+            } else {
+                btnIdeal.className = 'px-2.5 py-1 rounded-lg font-semibold transition bg-white text-slate-900 shadow-xs';
+                btnWilson.className = 'px-2.5 py-1 rounded-lg font-medium transition text-slate-600 hover:text-slate-900';
+            }
+            renderAll();
+        }
+
+        // Initialize on Window Load & Observe Resizes
+        window.addEventListener('load', () => {
+            bindControls();
+            attachCanvasInteraction(canvasTxy, 'txy');
+            attachCanvasInteraction(canvasPxy, 'pxy');
+            renderAll();
+
+            if (typeof ResizeObserver !== 'undefined') {
+                const ro = new ResizeObserver(() => renderAll());
+                ro.observe(canvasTxy.parentElement);
+                ro.observe(canvasPxy.parentElement);
+            } else {
+                window.addEventListener('resize', renderAll);
+            }
+        });
+    </script>
+</body>
+</html>
